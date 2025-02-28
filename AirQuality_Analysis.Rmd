@@ -1,0 +1,135 @@
+---
+title: "Air Quality Data Analysis from specdata Folder"
+author: "Yuemin Qin"
+date: "February 24, 2025"
+output:
+  pdf_document:
+    toc: true  # Table of contents in PDF
+    number_sections: true  # Number sections
+    latex_engine: pdflatex  # Use pdflatex for TinyTeX
+    keep_tex: false  # Optional, keeps .tex file for debugging
+fontsize: 12pt  # Readable font size for printing
+geometry: margin=1in  # 1-inch margins for printing
+---
+
+# Introduction
+
+This R Markdown document analyzes air quality data from 332 CSV files stored in the `specdata` folder at `~/Desktop/datasciencecoursera/specdata`. The analysis includes reading all CSV files, calculating pollutant means, counting complete cases, and computing correlations between sulfate and nitrate for monitors meeting a threshold of complete cases. This work supports Course 2 ("R Programming") of the Data Science: Foundations Using R specialization, my Ph.D. in Program Evaluation Methods, and my international student enrollment project.
+
+# Setup and Data Loading
+
+First, we set the working directory to `~/Desktop/datasciencecoursera` and read all CSV files from the `specdata` folder.
+
+```{r setup, include=TRUE}
+# Set working directory
+setwd("~/Desktop/datasciencecoursera")
+
+# List and read all CSV files from specdata
+csv_files <- list.files(path = "specdata", pattern = ".csv", full.names = TRUE)
+print(paste("Found", length(csv_files), "CSV files in specdata"))
+
+# Read all CSVs into a list using a for loop (beginner-friendly, Module 2)
+all_data <- list()
+for (i in 1:length(csv_files)) {
+  file <- csv_files[i]
+  all_data[[i]] <- read.csv(file, na.strings = c("", "NA", "NULL"))
+  names(all_data)[i] <- basename(file)
+}
+print(names(all_data))
+
+# Combine into one data frame (if consistent structure)
+combined_data <- do.call(rbind, all_data)
+print(str(combined_data))
+
+# Define pollutantmean() function
+pollutantmean <- function(directory, pollutant, id) {
+  if (!pollutant %in% c("sulfate", "nitrate")) stop("Pollutant must be 'sulfate' or 'nitrate'")
+  if (any(id < 1 | id > 332)) stop("ID must be between 1 and 332")
+  if (!dir.exists(directory)) stop("Directory does not exist")
+  
+  files <- list.files(path = directory, pattern = ".csv", full.names = TRUE)
+  id_files <- files[id]
+  pollutant_data <- numeric()
+  
+  for (file in id_files) {
+    data <- read.csv(file)
+    pollutant_values <- data[[pollutant]]
+    pollutant_data <- c(pollutant_data, pollutant_values)
+  }
+  
+  mean_value <- mean(pollutant_data, na.rm = TRUE)
+  return(mean_value)
+}
+
+# Test pollutantmean()
+sulfate_mean <- pollutantmean("specdata", "sulfate", 1:332)
+print(paste("Mean sulfate across all monitors:", sulfate_mean))
+
+nitrate_mean <- pollutantmean("specdata", "nitrate", 1:10)
+print(paste("Mean nitrate for monitors 1-10:", nitrate_mean))
+
+single_mean <- pollutantmean("specdata", "sulfate", 1)
+print(paste("Mean sulfate for monitor 1:", single_mean))
+
+# Define complete() function
+complete <- function(directory, id = 1:332) {
+  if (!dir.exists(directory)) stop("Directory does not exist")
+  if (any(id < 1 | id > 332)) stop("ID must be between 1 and 332")
+  
+  files <- list.files(path = directory, pattern = ".csv", full.names = TRUE)
+  id_files <- files[id]
+  
+  file_names <- character()
+  nobs <- numeric()
+  
+  for (file in id_files) {
+    data <- read.csv(file)
+    complete_cases <- sum(complete.cases(data))
+    file_names <- c(file_names, basename(file))
+    nobs <- c(nobs, complete_cases)
+  }
+  
+  result <- data.frame(id = file_names, nobs = nobs)
+  return(result)
+}
+
+# Test complete()
+complete_cases <- complete("specdata", 1:332)
+print(complete_cases)
+
+subset_cases <- complete("specdata", c(6, 10, 20, 34, 100, 200, 310))
+print(subset_cases)
+
+# Define corr() function
+corr <- function(directory, threshold = 0) {
+  if (!dir.exists(directory)) stop("Directory does not exist")
+  if (!is.numeric(threshold) || threshold < 0) stop("Threshold must be a non-negative number")
+  
+  files <- list.files(path = directory, pattern = ".csv", full.names = TRUE)
+  correlations <- numeric()
+  
+  for (file in files) {
+    data <- read.csv(file)
+    complete_cases <- sum(complete.cases(data))
+    if (complete_cases > threshold) {
+      sulfate <- data$sulfate[complete.cases(data)]
+      nitrate <- data$nitrate[complete.cases(data)]
+      if (length(sulfate) > 1 && length(nitrate) > 1) {
+        cor_value <- cor(sulfate, nitrate, use = "complete.obs")
+        correlations <- c(correlations, cor_value)
+      }
+    }
+  }
+  
+  return(correlations)
+}
+
+# Test corr()
+all_corrs <- corr("specdata", 0)
+print(all_corrs)
+
+corrs_150 <- corr("specdata", 150)
+print(corrs_150)
+
+corrs_1000 <- corr("specdata", 1000)
+print(corrs_1000)
